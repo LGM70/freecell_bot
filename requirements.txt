@@ -4,3 +4,5 @@ gymnasium
 
 torch
 wandb
+tyro
+tqdm

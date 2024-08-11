@@ -14,19 +14,23 @@ from .standard_spec import StandardSpec as Spec
 class FreeCellEnv(gym.Env):
     """Freecell game environment"""
 
-    def __init__(self, obs_space_cls: BaseObsSpace, action_space_cls: BaseActionSpace):
+    def __init__(self, obs_space_cls: BaseObsSpace, action_space_cls: BaseActionSpace, max_steps: int = 1000):
         self._obs_space = obs_space_cls
         self._action_space = action_space_cls
         self._obs = None
+        self._step = 0
+        self._max_steps = max_steps
         self.action_space = action_space_cls.get_gym_space()
         self.observation_space = obs_space_cls.get_gym_space()
 
     def step(self, action: Any) \
         -> tuple[Any, float, bool, bool, dict[str, Any]]:
         self._obs = np.copy(self._obs)
+        self._step += 1
         source_type, source_idx, dest_type, dest_idx = self._action_space.parse_action(action)
         reward = -1.
         solved = False
+        steps_exceed_limit = False
         result = {}
         if self._move(source_type, source_idx, dest_type, dest_idx):
             result['status'] = 'success'
@@ -40,12 +44,16 @@ class FreeCellEnv(gym.Env):
         else:
             reward -= 100.
             result['status'] = 'failure'
-        return self._obs, reward, solved, False, result
+        if self._step >= self._max_steps:
+            reward -= 200.
+            steps_exceed_limit = True
+        return self._obs, reward, solved, steps_exceed_limit, result
 
     def reset(self, *, seed: int | None = None, options: dict[str, Any] | None = None) \
         -> tuple[Any, dict[str, Any]]:
         super().reset(seed=seed)
         self._obs = self._obs_space.deal()
+        self._step = 0
         return self._obs, {}
 
     def render(self) -> str | list[str] | None:
@@ -264,12 +272,15 @@ if __name__ == '__main__':
             source = int(input('Move cards from: '))
             dest = int(input('Move cards to: '))
             moves += 1
-            _, _, terminated, _, info = env.step((source, dest))
+            _, _, terminated, truncated, info = env.step((source, dest))
             if info['status'] == 'failure':
                 print('Invalid move, press enter to continue')
                 input()
             elif terminated:
                 print(f'Congrats! You solve this in {moves} steps')
+                break
+            if truncated:
+                print(f'You failed to solve this in {moves} steps')
                 break
         except KeyboardInterrupt as exc:
             if args.save:
